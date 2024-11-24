@@ -33,9 +33,11 @@ class EcosystemSimulation:
             PredatorAgent(
                 name=f"Predator{i}",
                 position=(random.randint(0, grid_size - 1), random.randint(0, grid_size - 1)),
-                grid_size=grid_size
+                grid_size=grid_size,
+                group_id=random.randint(1, 3)  # Assign to one of 3 groups
             ) for i in range(num_predators)
         ]
+
         self.frames = []
         self.prey_population = []
         self.predator_population = []
@@ -70,22 +72,42 @@ class EcosystemSimulation:
                 prey.energy //= 2
 
         prey_positions = [prey.position for prey in self.prey_agents]
+        resources = [(x, y) for x in range(self.grid_size) for y in range(self.grid_size) if self.resources[x, y] == 1]
+
         for predator in self.predator_agents[:]:
-            action = predator.act(prey_positions)
-            if action == "eat":
-                self.prey_agents = [prey for prey in self.prey_agents if prey.position != predator.position]
-                logger.info(f"{predator.name} ate prey at {predator.position}.")
-            elif action == "die":
+            action = predator.act(prey_positions, self.predator_agents, resources)
+            if action == "die":
                 self.predator_agents.remove(predator)
-                logger.info(f"{predator.name} has died.")
-            elif predator.energy >= 15:  # Reproduction
-                new_predator = PredatorAgent(
-                    name=f"Predator{len(self.predator_agents)}",
-                    position=predator.position,
-                    grid_size=self.grid_size
-                )
-                self.predator_agents.append(new_predator)
-                predator.energy //= 2
+            elif action == "move":
+                # Check if the predator is on the same position as prey
+                prey_at_position = [prey for prey in self.prey_agents if prey.position == predator.position]
+                if prey_at_position:
+                    # Predator eats the prey
+                    for prey in prey_at_position:
+                        self.prey_agents.remove(prey)
+                        predator.energy += 10  # Gain energy for successful hunt
+                        logger.info(f"{predator.name} ate prey at {predator.position}.")
+                elif predator.position in resources:
+                    # Consume a resource if predator happens to land on it
+                    resources.remove(predator.position)  # Remove the resource
+                    predator.energy += 5  # Gain energy from the resource
+                    logger.info(f"{predator.name} consumed a resource at {predator.position}.")
+                else:
+                    # No interaction; just a movement
+                    logger.info(f"{predator.name} moved to {predator.position}.")
+
+                # Handle reproduction
+                if predator.energy >= 15:  # Energy threshold for reproduction
+                    new_predator = PredatorAgent(
+                        name=f"Predator{len(self.predator_agents)}",
+                        position=predator.position,  # Newborn appears at the parent's position
+                        energy=predator.energy // 2,  # Split energy with offspring
+                        grid_size=self.grid_size,
+                        group_id=predator.group_id  # Inherit parent's group
+                    )
+                    self.predator_agents.append(new_predator)
+                    predator.energy //= 2  # Reduce parent's energy after reproduction
+                    logger.info(f"{predator.name} reproduced at {predator.position}. New predator: {new_predator.name}")
 
         # Regenerate resources based on the current season
         self.resources += np.random.choice([0, 1], size=self.resources.shape, p=[1 - self.resource_regen_rate, self.resource_regen_rate])

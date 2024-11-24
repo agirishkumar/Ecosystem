@@ -5,7 +5,7 @@ def main():
     simulation = EcosystemSimulation(
         grid_size=20,
         num_prey=15,
-        num_predators=8,
+        num_predators=3,
         resource_regen_rate=0.3
     )
 
