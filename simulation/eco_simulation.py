@@ -25,10 +25,13 @@ class EcosystemSimulation:
         self.prey_agents = [
             PreyAgent(
                 name=f"Prey{i}",
-                position=(random.randint(0, grid_size - 1), random.randint(0, grid_size - 1)),
-                grid_size=grid_size
+                position=(random.randint(0, self.grid_size - 1), random.randint(0, self.grid_size - 1)),
+                grid_size=self.grid_size,
+                camouflage_tiles=[(x, y) for x in range(self.grid_size) for y in range(self.grid_size) if random.random() < 0.1],  # 10% grid tiles for camouflage
+                flock_id=random.randint(1, 3)  # Assign to one of 3 flocks
             ) for i in range(num_prey)
         ]
+
         self.predator_agents = [
             PredatorAgent(
                 name=f"Predator{i}",
@@ -58,7 +61,11 @@ class EcosystemSimulation:
                 self.resources[x, y] = 0  # Consume the resource
                 logger.info(f"{prey.name} consumed a resource at {prey.position}.")
 
-            action = prey.act()
+            action = prey.act(
+                resources=[(x, y) for x in range(self.grid_size) for y in range(self.grid_size) if self.resources[x, y] == 1],
+                predator_positions=[predator.position for predator in self.predator_agents],
+                other_prey=self.prey_agents
+            )
             if action == "die":
                 self.prey_agents.remove(prey)
                 logger.info(f"{prey.name} has died.")
@@ -66,10 +73,13 @@ class EcosystemSimulation:
                 new_prey = PreyAgent(
                     name=f"Prey{len(self.prey_agents)}",
                     position=prey.position,
-                    grid_size=self.grid_size
+                    grid_size=self.grid_size,
+                    camouflage_tiles=prey.camouflage_tiles,
+                    flock_id=prey.flock_id
                 )
                 self.prey_agents.append(new_prey)
                 prey.energy //= 2
+                logger.info(f"{prey.name} reproduced at {prey.position}. New prey: {new_prey.name}")
 
         prey_positions = [prey.position for prey in self.prey_agents]
         resources = [(x, y) for x in range(self.grid_size) for y in range(self.grid_size) if self.resources[x, y] == 1]
@@ -151,27 +161,57 @@ class EcosystemSimulation:
         self.predator_agents = [PredatorAgent(**p) for p in state["predators"]]
 
     def create_animation(self, filename="ecosystem_simulation.mp4"):
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.set_xlim(-1, self.grid_size)
-        ax.set_ylim(-1, self.grid_size)
-        ax.grid(True)
+        """
+        Creates an animation of the ecosystem simulation showing predators, prey, and resources.
+        
+        Args:
+            filename (str): Name of the output animation file
+        """
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        
+        # Setup resource plot
+        ax1.set_xlim(-1, self.grid_size)
+        ax1.set_ylim(-1, self.grid_size)
+        ax1.set_title("Resource Distribution")
+        ax1.grid(True)
+        
+        # Setup population plot
+        ax2.set_xlim(-1, self.grid_size)
+        ax2.set_ylim(-1, self.grid_size)
+        ax2.set_title("Agent Positions")
+        ax2.grid(True)
 
-        prey_scatter = ax.scatter([], [], color="green", label="Prey", s=100)
-        predator_scatter = ax.scatter([], [], color="red", label="Predators", s=100)
-        resource_plot = ax.imshow(self.resources, cmap="Greens", extent=(-0.5, self.grid_size - 0.5, -0.5, self.grid_size - 0.5), alpha=0.3)
-        ax.legend()
+        # Initialize plots
+        resource_plot = ax1.imshow(
+            self.resources, 
+            cmap="YlGn",  # Yellow-Green colormap for better resource visibility
+            extent=(-0.5, self.grid_size - 0.5, -0.5, self.grid_size - 0.5),
+            alpha=0.7,
+            vmin=0,
+            vmax=1
+        )
+        plt.colorbar(resource_plot, ax=ax1, label="Resource Level")
+        
+        prey_scatter = ax2.scatter([], [], color="green", label="Prey", s=100)
+        predator_scatter = ax2.scatter([], [], color="red", label="Predators", s=100)
+        ax2.legend()
 
         def update(frame):
             prey_positions = frame["prey"]
             predator_positions = frame["predators"]
             resources = frame["resources"]
 
+            # Update resource plot
+            resource_plot.set_array(resources)
+            
+            # Update prey positions
             if prey_positions:
                 prey_x, prey_y = zip(*prey_positions)
                 prey_coords = np.column_stack((prey_x, prey_y))
             else:
                 prey_coords = np.empty((0, 2))
-
+                
+            # Update predator positions
             if predator_positions:
                 pred_x, pred_y = zip(*predator_positions)
                 pred_coords = np.column_stack((pred_x, pred_y))
@@ -180,23 +220,56 @@ class EcosystemSimulation:
 
             prey_scatter.set_offsets(prey_coords)
             predator_scatter.set_offsets(pred_coords)
-            resource_plot.set_data(resources)
 
-            ax.set_title(f"Step {self.frames.index(frame) + 1} | Prey: {len(prey_positions)} | Predators: {len(predator_positions)}")
+            # Update titles with current population counts
+            frame_index = self.frames.index(frame)
+            ax1.set_title(f"Resource Distribution (Step {frame_index + 1})")
+            ax2.set_title(f"Agents (Prey: {len(prey_positions)}, Predators: {len(predator_positions)})")
 
-            return prey_scatter, predator_scatter, resource_plot
+            return resource_plot, prey_scatter, predator_scatter
 
         ani = FuncAnimation(fig, update, frames=self.frames, interval=500)
         ani.save(filename, writer="ffmpeg")
         plt.close()
 
-    def plot_population_metrics(self):
-        plt.figure(figsize=(8, 5))
-        plt.plot(self.prey_population, label="Prey Population", color="green")
-        plt.plot(self.predator_population, label="Predator Population", color="red")
-        plt.xlabel("Steps")
-        plt.ylabel("Population")
-        plt.title("Population Dynamics")
-        plt.legend()
-        plt.savefig("population_metrics.png")
+    def plot_population_metrics(self, filename="population_metrics.png"):
+        """
+        Plots and saves the population metrics of prey and predator over the simulation steps.
+        
+        Args:
+            filename (str): Name of the output file for the population plot
+        """
+        plt.figure(figsize=(10, 6))
+        
+        # Plot populations
+        plt.plot(self.prey_population, label="Prey Population", color="green", linewidth=2)
+        plt.plot(self.predator_population, label="Predator Population", color="red", linewidth=2)
+        
+        # Add labels and title
+        plt.xlabel("Steps", fontsize=12)
+        plt.ylabel("Population Count", fontsize=12)
+        plt.title("Population Dynamics Over Time", fontsize=14, pad=15)
+        
+        # Customize the plot
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend(fontsize=10)
+        
+        # Add some padding to the plot
+        plt.margins(x=0.02)
+        
+        # Customize the tick labels
+        plt.xticks(fontsize=10)
+        plt.yticks(fontsize=10)
+        
+        # Ensure the plot fits within the figure bounds
+        plt.tight_layout()
+        
+        # Save the plot
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        
+        # Display the plot
         plt.show()
+        
+        # Close the figure to free up memory
+        plt.close()
+
