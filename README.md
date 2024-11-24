@@ -130,6 +130,40 @@ Dynamic seasonal system affecting:
 - Population dynamics monitoring
 - Resource consumption tracking
 
+## Key Features Implemented
+
+- Resource Prioritization:
+    - Prey seek resources when energy is low.
+    - Prioritizes resources closer to its position.
+
+- Camouflage and Evasion:
+    - Prey can "camouflage" on specific tiles, avoiding detection.
+    - Moves away from predators when high energy.
+
+- Social Behaviors:
+Implements flocking behaviors using the Boids algorithm:
+    - Cohesion: Move towards the average position of flock mates.
+    - Separation: Avoid collision with flock mates (not explicitly shown but can be added if needed).
+    - Alignment: Can align movement direction with the flock.
+
+- Risk Management:
+    - High energy: Avoid predators by moving to safe tiles.
+    - Low energy: Seek resources to survive.
+
+## Behavior Outcomes
+
+- Intelligent Foraging:
+    Prey seek high-density resources and avoid dangerous areas.
+
+- Camouflage and Evasion:
+    Prey use camouflage to avoid predators and dynamically evade when predators approach.
+
+- Flocking:
+    Prey form groups, providing safety and reducing predator success rates.
+
+- Natural Reproduction:
+    Population grows under favorable conditions, maintaining balance.
+
 ## Contributing
 Feel free to submit issues, fork the repository, and create pull requests for any improvements.
 
